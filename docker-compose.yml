@@ -1,0 +1,13 @@
+services:
+  agente-linkedin:
+    build: .
+    container_name: agente-linkedin
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "8501:8501"
+    volumes:
+      - ./data:/data
+    environment:
+      DATABASE_PATH: /data/users.db

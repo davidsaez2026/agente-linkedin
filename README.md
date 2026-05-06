@@ -97,6 +97,8 @@ Para que la usen varios usuarios, despliegala en un hosting web:
 - Si necesitas persistencia robusta de usuarios, cambia `users.json` por una base externa como Supabase, Postgres o Firebase Auth.
 - La app ya soporta SQLite local por defecto y Supabase opcional para usuarios persistentes.
 
+Si tienes VPS, consulta `VPS_DEPLOYMENT.md`. Es la opcion mas recomendable para repo privado, dominio propio y control del despliegue.
+
 En despliegues gratuitos tipo Streamlit Cloud, el archivo SQLite local puede no ser persistente entre reinicios o redeploys. Para un equipo real, conviene usar Supabase o una base de datos gestionada.
 
 ### Usuarios persistentes con Supabase

@@ -2,9 +2,11 @@ __pycache__/
 *.pyc
 
 app_config.json
+.env
 users.json
 users.db
 users.db-*
+data/
 .streamlit/secrets.toml
 logs/
 

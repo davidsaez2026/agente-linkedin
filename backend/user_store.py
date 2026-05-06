@@ -1,5 +1,6 @@
 import os
 import sqlite3
+from urllib.parse import urlparse
 from pathlib import Path
 
 import requests
@@ -66,7 +67,7 @@ class SQLiteUserStore:
 
 class SupabaseUserStore:
     def __init__(self, url, service_role_key, table="app_users"):
-        self.url = url.rstrip("/")
+        self.url = normalize_supabase_url(url)
         self.table = table
         self.headers = {
             "apikey": service_role_key,
@@ -139,3 +140,10 @@ def get_user_store():
 
 def get_sqlite_user_store():
     return SQLiteUserStore()
+
+
+def normalize_supabase_url(url):
+    parsed = urlparse(url.strip())
+    if not parsed.scheme or not parsed.netloc:
+        raise ValueError("SUPABASE_URL debe tener formato https://xxxxx.supabase.co")
+    return f"{parsed.scheme}://{parsed.netloc}".rstrip("/")

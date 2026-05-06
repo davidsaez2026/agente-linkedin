@@ -2,6 +2,8 @@ import hashlib
 import hmac
 import secrets
 
+import requests
+
 from .user_store import get_sqlite_user_store, get_user_store
 
 
@@ -78,6 +80,11 @@ def create_user(username, password, role="user"):
             return False, "Ese usuario ya existe."
         store.create_user(username, hash_password(password), role, True)
         return True, "Usuario creado."
+    except requests.exceptions.ConnectionError:
+        return False, (
+            "No se pudo conectar con Supabase. Revisa SUPABASE_URL en Secrets: "
+            "debe ser la URL exacta del proyecto, por ejemplo https://xxxxx.supabase.co"
+        )
     except Exception as exc:
         return False, f"No se pudo crear el usuario: {exc}"
 

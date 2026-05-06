@@ -1,0 +1,313 @@
+import hmac
+import os
+
+import pandas as pd
+import streamlit as st
+
+from backend.auth import authenticate, create_user, ensure_admin_user, public_users, set_user_active
+from backend.email_tools import generate_email_permutations
+from backend.jobs import AGENTS, JobManager, is_cloud_runtime
+from backend.lead_import import LEAD_FIELDS, send_imported_leads
+from backend.memory import memory_stats
+from backend.places_provider import search_and_send_places
+from backend.settings import load_config, save_config
+
+
+def get_secret(name, default=""):
+    try:
+        return st.secrets.get(name, default)
+    except (FileNotFoundError, KeyError):
+        return os.getenv(name.upper(), default)
+
+
+def hydrate_backend_env():
+    for name in ["SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY", "SUPABASE_USERS_TABLE", "DATABASE_PATH"]:
+        value = get_secret(name, "")
+        if value not in ("", None):
+            os.environ[name] = str(value)
+
+
+def check_password(username, password):
+    expected_user = str(get_secret("APP_USERNAME", "admin"))
+    expected_password = str(get_secret("APP_PASSWORD", "admin"))
+    ensure_admin_user(expected_user, expected_password)
+    user = authenticate(username, password, expected_user, expected_password)
+    return user
+
+
+def login():
+    if st.session_state.get("authenticated"):
+        return True
+
+    st.title("Agente LinkedIn")
+    st.caption("Acceso privado")
+    with st.form("login_form"):
+        username = st.text_input("Usuario")
+        password = st.text_input("Contrasena", type="password")
+        submitted = st.form_submit_button("Entrar", use_container_width=True)
+
+    if submitted:
+        user = check_password(username, password)
+        if user:
+            st.session_state.authenticated = True
+            st.session_state.username = user["username"]
+            st.session_state.role = user["role"]
+            st.rerun()
+        else:
+            st.error("Usuario o contrasena incorrectos.")
+    return False
+
+
+def render_config(config):
+    st.subheader("Configuracion")
+    with st.form("config_form"):
+        openai_api_key = st.text_input("OpenAI API key", value=config["openai_api_key"], type="password")
+        webhook_url = st.text_input("Webhook de Google Apps Script", value=config["webhook_url"])
+        google_places_api_key = st.text_input(
+            "Google Places API key",
+            value=config.get("google_places_api_key", ""),
+            type="password",
+        )
+        busqueda_maps = st.text_input("Busqueda por defecto en Maps", value=config["busqueda_maps"])
+        objetivo_sesion = st.number_input("Objetivo por sesion", min_value=1, value=int(config["objetivo_sesion"]))
+        palabras_clave = st.text_area("Palabras clave de LinkedIn", value=config["palabras_clave_linkedin"])
+        submitted = st.form_submit_button("Guardar configuracion")
+
+    if submitted:
+        save_config(
+            {
+                "openai_api_key": openai_api_key,
+                "webhook_url": webhook_url,
+                "google_places_api_key": google_places_api_key,
+                "busqueda_maps": busqueda_maps,
+                "objetivo_sesion": objetivo_sesion,
+                "palabras_clave_linkedin": palabras_clave,
+            }
+        )
+        st.success("Configuracion guardada.")
+
+
+def render_radar():
+    st.subheader("Radar de emails")
+    with st.form("radar_form"):
+        nombre = st.text_input("Nombre", placeholder="David")
+        apellido = st.text_input("Apellido", placeholder="Saez")
+        dominio = st.text_input("Dominio", placeholder="club.com")
+        submitted = st.form_submit_button("Generar candidatos")
+
+    if submitted:
+        emails = generate_email_permutations(nombre, apellido, dominio)
+        if emails:
+            st.code("\n".join(emails), language="text")
+        else:
+            st.warning("Introduce al menos nombre y dominio.")
+
+
+def render_places_api(config):
+    st.subheader("Maps sin Selenium")
+    st.caption("Usa Google Places Text Search API y envia resultados al webhook de Sheets.")
+    with st.form("places_api_form"):
+        busqueda = st.text_input("Busqueda", value=config["busqueda_maps"])
+        ciudad = st.text_input("Ciudad", placeholder="Madrid")
+        pais = st.text_input("Pais", placeholder="España")
+        max_results = st.number_input("Maximo de resultados", min_value=1, max_value=60, value=10)
+        send_to_sheets = st.checkbox("Enviar a Google Sheets", value=True)
+        submitted = st.form_submit_button("Buscar con API")
+
+    if submitted:
+        if not ciudad or not pais:
+            st.warning("Introduce ciudad y pais.")
+            return
+        if not config.get("google_places_api_key"):
+            st.error("Falta Google Places API key en Configuracion o Secrets.")
+            return
+        try:
+            with st.spinner("Consultando Google Places..."):
+                if send_to_sheets:
+                    result = search_and_send_places(config, busqueda, ciudad, pais, int(max_results))
+                    st.success(f"{result['sent']} de {len(result['places'])} resultados enviados a Sheets.")
+                    if result["errors"]:
+                        st.warning(result["errors"][0])
+                    places = result["places"]
+                else:
+                    from backend.places_provider import search_places
+
+                    query = f"{busqueda} en {ciudad}, {pais}"
+                    places = search_places(config.get("google_places_api_key", ""), query, int(max_results))
+                    st.success(f"{len(places)} resultados encontrados.")
+            st.dataframe(places, use_container_width=True)
+        except Exception as exc:
+            st.error(f"No se pudo completar la busqueda: {exc}")
+
+
+def render_import(config):
+    st.subheader("Importar leads sin Selenium")
+    st.caption("Sube un CSV exportado desde Sheets, LinkedIn Sales Navigator, CRM u otra fuente permitida.")
+    uploaded = st.file_uploader("CSV de leads", type=["csv"])
+    default_tag = st.text_input("Etiqueta por defecto", value="Importado sin Selenium")
+
+    st.write("Columnas reconocidas:")
+    st.code(", ".join(LEAD_FIELDS), language="text")
+
+    if not uploaded:
+        return
+
+    try:
+        df = pd.read_csv(uploaded).fillna("")
+    except Exception as exc:
+        st.error(f"No se pudo leer el CSV: {exc}")
+        return
+
+    st.dataframe(df.head(50), use_container_width=True)
+    missing = [field for field in ["nombre", "empresa"] if field not in df.columns]
+    if missing:
+        st.info("No es obligatorio tener todas las columnas, pero conviene incluir nombre o empresa.")
+
+    if st.button("Enviar leads al webhook", use_container_width=True):
+        if not config.get("webhook_url"):
+            st.error("Falta WEBHOOK_URL en Configuracion o Secrets.")
+            return
+        result = send_imported_leads(config["webhook_url"], df.to_dict("records"), default_tag)
+        st.success(f"{result['sent']} leads enviados.")
+        if result["errors"]:
+            st.warning(result["errors"][0])
+
+
+def render_users():
+    st.subheader("Usuarios")
+    if st.session_state.get("role") != "admin":
+        st.info("Solo los administradores pueden gestionar usuarios.")
+        return
+
+    with st.form("create_user_form"):
+        username = st.text_input("Nuevo usuario")
+        password = st.text_input("Contrasena temporal", type="password")
+        role = st.selectbox("Rol", ["user", "admin"])
+        submitted = st.form_submit_button("Crear usuario")
+    if submitted:
+        ok, message = create_user(username, password, role)
+        (st.success if ok else st.error)(message)
+
+    users = public_users()
+    if users:
+        st.dataframe(users, use_container_width=True)
+
+    with st.form("disable_user_form"):
+        selected = st.selectbox("Usuario a activar/desactivar", [u["usuario"] for u in users] or [""])
+        active = st.checkbox("Activo", value=True)
+        submitted = st.form_submit_button("Actualizar estado")
+    if submitted and selected:
+        ok, message = set_user_active(selected, active)
+        (st.success if ok else st.error)(message)
+
+
+def agent_params_form(key, config):
+    if key == "maps":
+        st.text_input("Ciudad", key=f"{key}_ciudad", placeholder="Madrid")
+        st.text_input("Pais", key=f"{key}_pais", placeholder="España")
+        st.text_input("Busqueda", key=f"{key}_busqueda", value=config["busqueda_maps"])
+        return {
+            "AGENTE_MAPS_MODO": "basico",
+            "AGENTE_MAPS_CIUDAD": st.session_state.get(f"{key}_ciudad", ""),
+            "AGENTE_MAPS_PAIS": st.session_state.get(f"{key}_pais", ""),
+            "AGENTE_BUSQUEDA_MAPS": st.session_state.get(f"{key}_busqueda", config["busqueda_maps"]),
+        }
+    if key == "francotirador":
+        st.text_input("Cargo", key=f"{key}_cargo", placeholder="analista de datos")
+        st.text_input("Ciudad", key=f"{key}_ciudad", placeholder="Madrid")
+        st.text_input("Pais", key=f"{key}_pais", placeholder="España")
+        return {
+            "AGENTE_FRANCO_MODO": "linkedin",
+            "AGENTE_FRANCO_CARGO": st.session_state.get(f"{key}_cargo", ""),
+            "AGENTE_FRANCO_CIUDAD": st.session_state.get(f"{key}_ciudad", ""),
+            "AGENTE_FRANCO_PAIS": st.session_state.get(f"{key}_pais", ""),
+        }
+    return {}
+
+
+def validate_agent_params(key, params):
+    required = {
+        "maps": ["AGENTE_MAPS_CIUDAD", "AGENTE_MAPS_PAIS"],
+        "francotirador": ["AGENTE_FRANCO_CARGO", "AGENTE_FRANCO_CIUDAD", "AGENTE_FRANCO_PAIS"],
+    }
+    missing = [name for name in required.get(key, []) if not params.get(name)]
+    return missing
+
+
+def render_agents(config, jobs):
+    st.subheader("Agentes")
+    if is_cloud_runtime():
+        st.warning(
+            "Este entorno parece Streamlit Cloud. Los agentes con Selenium quedan como jobs backend, "
+            "pero pueden fallar si necesitan Chrome interactivo o login manual."
+        )
+    cols = st.columns(2)
+    for index, (key, agent) in enumerate(AGENTS.items()):
+        with cols[index % 2]:
+            with st.container(border=True):
+                st.markdown(f"**{agent['title']}**")
+                st.caption(agent["description"])
+                status = jobs.status(key)
+                running = status["running"]
+                st.write("Estado:", "En ejecucion" if running else "Detenido")
+                params = agent_params_form(key, config)
+
+                left, right = st.columns(2)
+                if left.button("Iniciar", key=f"start_{key}", use_container_width=True):
+                    missing = validate_agent_params(key, params)
+                    if missing:
+                        st.warning("Faltan parametros para iniciar este agente.")
+                    else:
+                        ok, message = jobs.start(key, config, params)
+                        (st.success if ok else st.error)(message)
+                if right.button("Detener", key=f"stop_{key}", use_container_width=True):
+                    ok, message = jobs.stop(key)
+                    (st.success if ok else st.info)(message)
+
+                if status.get("log"):
+                    with st.expander("Ver log"):
+                        st.code(jobs.log_tail(key) or "Log vacio.", language="text")
+
+
+def main():
+    st.set_page_config(page_title="Agente LinkedIn", page_icon="🔒", layout="wide")
+    hydrate_backend_env()
+    if not login():
+        return
+
+    config = load_config(get_secret)
+    jobs = JobManager(st.session_state)
+
+    top_left, top_right = st.columns([0.8, 0.2])
+    top_left.title("Agente LinkedIn")
+    top_left.caption(f"Panel privado de prospeccion y enriquecimiento. Usuario: {st.session_state.get('username')}")
+    if top_right.button("Cerrar sesion", use_container_width=True):
+        st.session_state.authenticated = False
+        st.session_state.username = ""
+        st.session_state.role = ""
+        st.rerun()
+
+    stats = memory_stats()
+    cols = st.columns(len(stats))
+    for col, (label, value) in zip(cols, stats):
+        col.metric(label, value)
+
+    tab_panel, tab_places, tab_import, tab_config, tab_tools, tab_users = st.tabs(
+        ["Panel", "Maps API", "Importar", "Configuracion", "Herramientas", "Usuarios"]
+    )
+    with tab_panel:
+        render_agents(config, jobs)
+    with tab_places:
+        render_places_api(config)
+    with tab_import:
+        render_import(config)
+    with tab_config:
+        render_config(config)
+    with tab_tools:
+        render_radar()
+    with tab_users:
+        render_users()
+
+
+if __name__ == "__main__":
+    main()

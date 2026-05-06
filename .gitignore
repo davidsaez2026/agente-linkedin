@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+
+app_config.json
+users.json
+users.db
+users.db-*
+.streamlit/secrets.toml
+logs/
+
+.DS_Store
+._*

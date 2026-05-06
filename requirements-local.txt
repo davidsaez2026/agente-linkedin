@@ -1,0 +1,5 @@
+-r requirements.txt
+selenium>=4.21
+webdriver-manager>=4.0
+openai>=1.30
+dnspython>=2.6

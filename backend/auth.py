@@ -2,7 +2,7 @@ import hashlib
 import hmac
 import secrets
 
-from .user_store import get_user_store
+from .user_store import get_sqlite_user_store, get_user_store
 
 
 PBKDF2_ITERATIONS = 260000
@@ -37,13 +37,21 @@ def verify_password(password, stored_hash):
 
 def ensure_admin_user(username, password):
     store = get_user_store()
-    if store.get_user(username):
-        return
-    store.create_user(username, hash_password(password), "admin", True)
+    try:
+        if store.get_user(username):
+            return
+        store.create_user(username, hash_password(password), "admin", True)
+    except Exception:
+        fallback = get_sqlite_user_store()
+        if not fallback.get_user(username):
+            fallback.create_user(username, hash_password(password), "admin", True)
 
 
 def authenticate(username, password, fallback_username=None, fallback_password=None):
-    user = get_user_store().get_user(username)
+    try:
+        user = get_user_store().get_user(username)
+    except Exception:
+        user = get_sqlite_user_store().get_user(username)
     if user and user.get("active", True):
         if verify_password(password, user.get("password_hash", "")):
             return {"username": username, "role": user.get("role", "user")}
@@ -64,11 +72,10 @@ def create_user(username, password, role="user"):
     if role not in {"admin", "user"}:
         return False, "Rol no valido."
 
-    store = get_user_store()
-    if store.get_user(username):
-        return False, "Ese usuario ya existe."
-
     try:
+        store = get_user_store()
+        if store.get_user(username):
+            return False, "Ese usuario ya existe."
         store.create_user(username, hash_password(password), role, True)
         return True, "Usuario creado."
     except Exception as exc:
@@ -85,7 +92,8 @@ def set_user_active(username, active):
 
 
 def public_users():
-    return [
-        {"usuario": row["username"], "rol": row.get("role", "user"), "activo": bool(row.get("active", True))}
-        for row in get_user_store().list_users()
-    ]
+    try:
+        rows = get_user_store().list_users()
+    except Exception:
+        rows = get_sqlite_user_store().list_users()
+    return [{"usuario": row["username"], "rol": row.get("role", "user"), "activo": bool(row.get("active", True))} for row in rows]

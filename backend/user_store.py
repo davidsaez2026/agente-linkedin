@@ -135,3 +135,7 @@ def get_user_store():
             os.getenv("SUPABASE_USERS_TABLE", "app_users"),
         )
     return SQLiteUserStore()
+
+
+def get_sqlite_user_store():
+    return SQLiteUserStore()

@@ -1,7 +1,10 @@
 import requests
 
+from .settings import normalize_webhook_url
+
 
 def send_lead(webhook_url, lead):
+    webhook_url = normalize_webhook_url(webhook_url)
     if not webhook_url:
         return False, "Falta WEBHOOK_URL."
     try:

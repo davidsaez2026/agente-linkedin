@@ -52,6 +52,7 @@ def load_config(secret_getter=None):
     except (TypeError, ValueError):
         config["objetivo_sesion"] = DEFAULT_CONFIG["objetivo_sesion"]
     config["show_legacy_agents"] = str(config.get("show_legacy_agents", "")).lower() in {"1", "true", "yes", "on"}
+    config["webhook_url"] = normalize_webhook_url(config.get("webhook_url", ""))
     return config
 
 
@@ -59,6 +60,7 @@ def save_config(config):
     clean = DEFAULT_CONFIG.copy()
     clean.update(config)
     clean["objetivo_sesion"] = max(1, int(clean["objetivo_sesion"]))
+    clean["webhook_url"] = normalize_webhook_url(clean.get("webhook_url", ""))
     with CONFIG_FILE.open("w", encoding="utf-8") as f:
         json.dump(clean, f, indent=2, ensure_ascii=False)
     return clean
@@ -75,3 +77,21 @@ def config_env(config, params=None):
     }
     env.update({key: str(value) for key, value in params.items() if value not in ("", None)})
     return {key: value for key, value in env.items() if value not in ("", None)}
+
+
+def normalize_webhook_url(value):
+    url = str(value or "").strip().strip('"').strip("'")
+    if not url:
+        return ""
+
+    apps_script_prefix = "https://script.google.com/macros/s/"
+    if url.count(apps_script_prefix) > 1:
+        url = apps_script_prefix + url.split(apps_script_prefix)[-1]
+
+    if url.startswith("AKfy"):
+        url = f"{apps_script_prefix}{url}"
+
+    if url.startswith(apps_script_prefix) and not url.endswith("/exec"):
+        url = url.rstrip("/") + "/exec"
+
+    return url

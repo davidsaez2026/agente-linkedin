@@ -46,6 +46,7 @@ http://127.0.0.1:8787
 - Generador de candidatos de email corporativo.
 - Busqueda de entidades en Google Places API sin Selenium.
 - Busquedas incrementales en Places API: los `place_id` ya enviados se guardan para evitar duplicados.
+- Enriquecimiento opcional de emails publicos desde la web de cada entidad.
 - Botones para iniciar/detener agentes y consultar logs.
 - Acceso controlado por usuario y contrasena en la version Streamlit.
 - Gestion de usuarios desde la pestaña `Usuarios` para administradores.

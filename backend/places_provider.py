@@ -1,4 +1,6 @@
 import time
+import re
+from urllib.parse import urljoin, urlparse
 
 import requests
 
@@ -80,7 +82,7 @@ def place_to_lead(place, ciudad, pais, etiqueta):
         "url_perfil": place.get("web") or place.get("maps_url", ""),
         "empresa": place.get("nombre", ""),
         "cargo": "Club/Entidad",
-        "email": "",
+        "email": place.get("email", ""),
         "telefono": place.get("telefono", ""),
         "palabra_clave": etiqueta,
         "ciudad": ciudad,
@@ -93,9 +95,11 @@ def place_to_lead(place, ciudad, pais, etiqueta):
 
 
 PLACES_MEMORY_FILE = "visitados_places_api.txt"
+EMAIL_PATTERN = re.compile(r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}")
+CONTACT_PATHS = ["", "/contacto", "/contact", "/club/contacto", "/contact-us"]
 
 
-def search_and_send_places(config, busqueda, ciudad, pais, max_results):
+def search_and_send_places(config, busqueda, ciudad, pais, max_results, enrich_emails=False):
     query = f"{busqueda} en {ciudad}, {pais}".strip()
     places = search_places(config.get("google_places_api_key", ""), query, max_results=max_results)
     seen_ids = load_seen_ids(PLACES_MEMORY_FILE)
@@ -104,6 +108,8 @@ def search_and_send_places(config, busqueda, ciudad, pais, max_results):
     errors = []
     skipped = len(places) - len(new_places)
     for place in new_places:
+        if enrich_emails:
+            enrich_place_email(place)
         lead = place_to_lead(place, ciudad, pais, f"Places API: {busqueda}")
         ok, message = send_lead(config.get("webhook_url", ""), lead)
         if ok:
@@ -112,3 +118,69 @@ def search_and_send_places(config, busqueda, ciudad, pais, max_results):
         else:
             errors.append(message)
     return {"query": query, "places": places, "new_places": new_places, "sent": sent, "skipped": skipped, "errors": errors}
+
+
+def enrich_places_with_emails(places):
+    for place in places:
+        enrich_place_email(place)
+    return places
+
+
+def enrich_place_email(place):
+    if place.get("email") or not place.get("web"):
+        return place
+    place["email"] = find_public_emails(place["web"])
+    return place
+
+
+def find_public_emails(website_url, max_pages=3):
+    base_url = normalize_website_url(website_url)
+    if not base_url or should_skip_email_lookup(base_url):
+        return ""
+
+    emails = []
+    visited = set()
+    for path in CONTACT_PATHS[:max_pages]:
+        url = urljoin(base_url, path)
+        if url in visited:
+            continue
+        visited.add(url)
+        try:
+            response = requests.get(
+                url,
+                timeout=8,
+                headers={"User-Agent": "Mozilla/5.0 AgenteProspector/1.0"},
+            )
+            if response.status_code >= 400:
+                continue
+            found = EMAIL_PATTERN.findall(response.text)
+            for email in found:
+                email = email.strip().lower()
+                if is_valid_public_email(email) and email not in emails:
+                    emails.append(email)
+        except requests.RequestException:
+            continue
+        if emails:
+            break
+    return ", ".join(emails[:3])
+
+
+def normalize_website_url(url):
+    value = str(url or "").strip()
+    if not value:
+        return ""
+    if not value.startswith(("http://", "https://")):
+        value = "https://" + value
+    return value
+
+
+def should_skip_email_lookup(url):
+    host = urlparse(url).netloc.lower()
+    blocked = ["google.", "facebook.", "instagram.", "twitter.", "x.com", "linkedin.", "youtube."]
+    return any(item in host for item in blocked)
+
+
+def is_valid_public_email(email):
+    blocked_suffixes = (".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg")
+    blocked_fragments = ["example.com", "sentry.io", "wixpress.com"]
+    return not email.endswith(blocked_suffixes) and not any(fragment in email for fragment in blocked_fragments)

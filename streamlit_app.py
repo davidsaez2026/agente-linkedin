@@ -9,7 +9,7 @@ from backend.email_tools import generate_email_permutations
 from backend.jobs import AGENTS, JobManager, is_cloud_runtime
 from backend.lead_import import LEAD_FIELDS, send_imported_leads
 from backend.memory import memory_stats
-from backend.places_provider import search_and_send_places
+from backend.places_provider import enrich_places_with_emails, search_and_send_places
 from backend.settings import load_config, save_config
 
 
@@ -119,6 +119,7 @@ def render_places_api(config):
         pais = st.text_input("Pais", placeholder="España")
         max_results = st.number_input("Maximo de resultados", min_value=1, max_value=60, value=10)
         send_to_sheets = st.checkbox("Enviar a Google Sheets", value=True)
+        enrich_emails = st.checkbox("Buscar emails públicos en la web", value=True)
         submitted = st.form_submit_button("Buscar con API")
 
     if submitted:
@@ -131,7 +132,14 @@ def render_places_api(config):
         try:
             with st.spinner("Consultando Google Places..."):
                 if send_to_sheets:
-                    result = search_and_send_places(config, busqueda, ciudad, pais, int(max_results))
+                    result = search_and_send_places(
+                        config,
+                        busqueda,
+                        ciudad,
+                        pais,
+                        int(max_results),
+                        enrich_emails=enrich_emails,
+                    )
                     st.success(
                         f"{result['sent']} nuevos enviados a Sheets. "
                         f"{result['skipped']} duplicados ignorados de {len(result['places'])} resultados."
@@ -144,6 +152,8 @@ def render_places_api(config):
 
                     query = f"{busqueda} en {ciudad}, {pais}"
                     places = search_places(config.get("google_places_api_key", ""), query, int(max_results))
+                    if enrich_emails:
+                        places = enrich_places_with_emails(places)
                     st.success(f"{len(places)} resultados encontrados.")
             st.dataframe(places, use_container_width=True)
         except Exception as exc:

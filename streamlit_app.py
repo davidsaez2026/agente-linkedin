@@ -10,6 +10,7 @@ from backend.club_sources import SPAIN_SOURCES_2025_26, fetch_spain_clubs_2025_2
 from backend.email_tools import generate_email_permutations
 from backend.jobs import AGENTS, JobManager, is_cloud_runtime
 from backend.lead_import import LEAD_FIELDS, send_imported_leads
+from backend.linkedin_tools import DEFAULT_LINKEDIN_ROLES, build_linkedin_searches, searches_to_csv
 from backend.memory import memory_stats
 from backend.places_provider import build_places_query, enrich_places_with_emails, search_and_send_places
 from backend.settings import load_config, save_config
@@ -282,6 +283,51 @@ def render_club_batch(config):
         st.dataframe(pd.DataFrame(result["results"]), use_container_width=True)
 
 
+def render_linkedin_targets():
+    st.subheader("Perfiles LinkedIn objetivo")
+    st.caption(
+        "Genera búsquedas dirigidas por club y rol. No automatiza LinkedIn ni extrae perfiles; "
+        "te da URLs para trabajo manual, Sales Navigator o exportación autorizada."
+    )
+
+    country = st.text_input("País/contexto", value="España", key="linkedin_country")
+    clubs_text = st.text_area(
+        "Clubes, uno por línea",
+        placeholder="Real Madrid\nFC Barcelona\nValencia CF",
+        height=140,
+        key="linkedin_clubs",
+    )
+    roles_text = st.text_area(
+        "Roles objetivo, uno por línea",
+        value="\n".join(DEFAULT_LINKEDIN_ROLES),
+        height=180,
+        key="linkedin_roles",
+    )
+    max_rows = st.number_input("Máximo de búsquedas a generar", min_value=1, max_value=1000, value=200)
+
+    if st.button("Generar búsquedas LinkedIn", use_container_width=True):
+        clubs = [{"club": line.strip(), "categoria": ""} for line in clubs_text.splitlines() if line.strip()]
+        roles = [line.strip() for line in roles_text.splitlines() if line.strip()]
+        searches = build_linkedin_searches(clubs, roles, country=country)[: int(max_rows)]
+        st.session_state.linkedin_searches = searches
+
+    searches = st.session_state.get("linkedin_searches", [])
+    if searches:
+        st.success(f"{len(searches)} búsquedas generadas.")
+        st.dataframe(pd.DataFrame(searches), use_container_width=True)
+        st.download_button(
+            "Descargar CSV de búsquedas",
+            data=searches_to_csv(searches),
+            file_name="busquedas_linkedin_clubes.csv",
+            mime="text/csv",
+            use_container_width=True,
+        )
+        first = searches[0]
+        st.markdown("Primera búsqueda:")
+        st.link_button("Abrir en LinkedIn", first["linkedin_people_url"])
+        st.link_button("Abrir en Google", first["google_linkedin_url"])
+
+
 def render_users():
     st.subheader("Usuarios")
     if st.session_state.get("role") != "admin":
@@ -401,7 +447,7 @@ def main():
     for col, (label, value) in zip(cols, stats):
         col.metric(label, value)
 
-    tab_names = ["Maps API", "Clubes", "Importar", "Configuracion", "Herramientas", "Usuarios"]
+    tab_names = ["Maps API", "Clubes", "LinkedIn", "Importar", "Configuracion", "Herramientas", "Usuarios"]
     if config.get("show_legacy_agents"):
         tab_names.insert(0, "Agentes legacy")
 
@@ -417,6 +463,9 @@ def main():
     tab_index += 1
     with tabs[tab_index]:
         render_club_batch(config)
+    tab_index += 1
+    with tabs[tab_index]:
+        render_linkedin_targets()
     tab_index += 1
     with tabs[tab_index]:
         render_import(config)

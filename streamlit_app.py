@@ -89,9 +89,10 @@ def render_config(config):
 
 def render_radar():
     st.subheader("Radar de emails")
+    st.caption("Puedes generar candidatos personales con nombre/apellido o direcciones generales usando solo dominio.")
     with st.form("radar_form"):
-        nombre = st.text_input("Nombre", placeholder="David")
-        apellido = st.text_input("Apellido", placeholder="Saez")
+        nombre = st.text_input("Nombre", placeholder="Opcional")
+        apellido = st.text_input("Apellido", placeholder="Opcional")
         dominio = st.text_input("Dominio", placeholder="club.com")
         submitted = st.form_submit_button("Generar candidatos")
 
@@ -100,7 +101,7 @@ def render_radar():
         if emails:
             st.code("\n".join(emails), language="text")
         else:
-            st.warning("Introduce al menos nombre y dominio.")
+            st.warning("Introduce al menos un dominio.")
 
 
 def render_places_api(config):

@@ -50,6 +50,7 @@ http://127.0.0.1:8787
 - Gestion de usuarios desde la pestaña `Usuarios` para administradores.
 - Capa `backend/` separada para configuracion, memoria, herramientas de email y ejecucion de jobs.
 - Agentes Maps y Francotirador preparados para recibir parametros desde Streamlit sin pedirlos por consola.
+- Los agentes legacy con Selenium quedan ocultos por defecto en produccion. Se pueden reactivar con `SHOW_LEGACY_AGENTS=true`.
 
 ## Despliegue gratuito en Streamlit Community Cloud
 

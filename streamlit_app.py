@@ -71,6 +71,11 @@ def render_config(config):
         busqueda_maps = st.text_input("Busqueda por defecto en Maps", value=config["busqueda_maps"])
         objetivo_sesion = st.number_input("Objetivo por sesion", min_value=1, value=int(config["objetivo_sesion"]))
         palabras_clave = st.text_area("Palabras clave de LinkedIn", value=config["palabras_clave_linkedin"])
+        show_legacy_agents = st.checkbox(
+            "Mostrar agentes legacy con Selenium",
+            value=bool(config.get("show_legacy_agents", False)),
+            help="Solo recomendado en ejecucion local con Chrome/Selenium instalado.",
+        )
         submitted = st.form_submit_button("Guardar configuracion")
 
     if submitted:
@@ -82,6 +87,7 @@ def render_config(config):
                 "busqueda_maps": busqueda_maps,
                 "objetivo_sesion": objetivo_sesion,
                 "palabras_clave_linkedin": palabras_clave,
+                "show_legacy_agents": show_legacy_agents,
             }
         )
         st.success("Configuracion guardada.")
@@ -293,20 +299,30 @@ def main():
     for col, (label, value) in zip(cols, stats):
         col.metric(label, value)
 
-    tab_panel, tab_places, tab_import, tab_config, tab_tools, tab_users = st.tabs(
-        ["Panel", "Maps API", "Importar", "Configuracion", "Herramientas", "Usuarios"]
-    )
-    with tab_panel:
-        render_agents(config, jobs)
-    with tab_places:
+    tab_names = ["Maps API", "Importar", "Configuracion", "Herramientas", "Usuarios"]
+    if config.get("show_legacy_agents"):
+        tab_names.insert(0, "Agentes legacy")
+
+    tabs = st.tabs(tab_names)
+    tab_index = 0
+    if config.get("show_legacy_agents"):
+        with tabs[tab_index]:
+            render_agents(config, jobs)
+        tab_index += 1
+
+    with tabs[tab_index]:
         render_places_api(config)
-    with tab_import:
+    tab_index += 1
+    with tabs[tab_index]:
         render_import(config)
-    with tab_config:
+    tab_index += 1
+    with tabs[tab_index]:
         render_config(config)
-    with tab_tools:
+    tab_index += 1
+    with tabs[tab_index]:
         render_radar()
-    with tab_users:
+    tab_index += 1
+    with tabs[tab_index]:
         render_users()
 
 

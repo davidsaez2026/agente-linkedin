@@ -14,6 +14,7 @@ DEFAULT_CONFIG = {
     "busqueda_maps": "Futbol Club",
     "objetivo_sesion": 10,
     "palabras_clave_linkedin": "futbol data, analista deportivo, scouting futbol",
+    "show_legacy_agents": False,
 }
 
 SECRET_MAP = {
@@ -23,6 +24,7 @@ SECRET_MAP = {
     "busqueda_maps": "BUSQUEDA_MAPS",
     "objetivo_sesion": "OBJETIVO_SESION",
     "palabras_clave_linkedin": "PALABRAS_CLAVE_LINKEDIN",
+    "show_legacy_agents": "SHOW_LEGACY_AGENTS",
 }
 
 
@@ -49,6 +51,7 @@ def load_config(secret_getter=None):
         config["objetivo_sesion"] = max(1, int(config["objetivo_sesion"]))
     except (TypeError, ValueError):
         config["objetivo_sesion"] = DEFAULT_CONFIG["objetivo_sesion"]
+    config["show_legacy_agents"] = str(config.get("show_legacy_agents", "")).lower() in {"1", "true", "yes", "on"}
     return config
 
 

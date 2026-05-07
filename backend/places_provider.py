@@ -1,5 +1,5 @@
-import time
 import re
+import time
 from urllib.parse import urljoin, urlparse
 
 import requests
@@ -43,7 +43,7 @@ def search_places(api_key, query, max_results=20, language_code="es"):
         payload = {
             "textQuery": query,
             "languageCode": language_code,
-            "maxResultCount": min(20, max_results - len(places)),
+            "pageSize": min(20, max_results - len(places)),
         }
         if page_token:
             payload["pageToken"] = page_token
@@ -96,7 +96,23 @@ def place_to_lead(place, ciudad, pais, etiqueta):
 
 PLACES_MEMORY_FILE = "visitados_places_api.txt"
 EMAIL_PATTERN = re.compile(r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}")
-CONTACT_PATHS = ["", "/contacto", "/contact", "/club/contacto", "/contact-us"]
+CONTACT_PATHS = [
+    "",
+    "/contacto",
+    "/contact",
+    "/club/contacto",
+    "/contact-us",
+    "/contactanos",
+    "/contactar",
+    "/aviso-legal",
+    "/legal",
+    "/privacidad",
+    "/privacy",
+    "/sobre-nosotros",
+    "/about",
+    "/club",
+]
+CONTACT_LINK_KEYWORDS = ["contact", "contacto", "legal", "privacidad", "privacy", "about", "club"]
 
 
 def search_and_send_places(config, busqueda, ciudad, pais, max_results, enrich_emails=False):
@@ -141,15 +157,15 @@ def enrich_place_email(place):
     return place
 
 
-def find_public_emails(website_url, max_pages=3):
+def find_public_emails(website_url, max_pages=8):
     base_url = normalize_website_url(website_url)
     if not base_url or should_skip_email_lookup(base_url):
         return ""
 
     emails = []
     visited = set()
-    for path in CONTACT_PATHS[:max_pages]:
-        url = urljoin(base_url, path)
+    urls_to_visit = build_email_lookup_urls(base_url, max_pages)
+    for url in urls_to_visit:
         if url in visited:
             continue
         visited.add(url)
@@ -162,15 +178,70 @@ def find_public_emails(website_url, max_pages=3):
             if response.status_code >= 400:
                 continue
             found = EMAIL_PATTERN.findall(response.text)
-            for email in found:
-                email = email.strip().lower()
-                if is_valid_public_email(email) and email not in emails:
-                    emails.append(email)
+            add_emails(emails, found, base_url)
+            for link in extract_contact_links(response.text, url):
+                if len(urls_to_visit) >= max_pages:
+                    break
+                if link not in visited and link not in urls_to_visit:
+                    urls_to_visit.append(link)
         except requests.RequestException:
             continue
-        if emails:
+        if len(emails) >= 5:
             break
-    return ", ".join(emails[:3])
+    return ", ".join(emails[:5])
+
+
+def build_email_lookup_urls(base_url, max_pages):
+    urls = []
+    for path in CONTACT_PATHS:
+        url = urljoin(base_url, path)
+        if url not in urls:
+            urls.append(url)
+        if len(urls) >= max_pages:
+            break
+    return urls
+
+
+def extract_contact_links(html, current_url):
+    hrefs = re.findall(r'href=["\']([^"\']+)["\']', html, flags=re.IGNORECASE)
+    links = []
+    base_host = urlparse(current_url).netloc.lower()
+    for href in hrefs:
+        href_lower = href.lower()
+        if not any(keyword in href_lower for keyword in CONTACT_LINK_KEYWORDS):
+            continue
+        absolute = urljoin(current_url, href)
+        parsed = urlparse(absolute)
+        if parsed.netloc.lower() != base_host:
+            continue
+        clean_url = parsed._replace(fragment="", query="").geturl()
+        if clean_url not in links:
+            links.append(clean_url)
+    return links
+
+
+def add_emails(emails, candidates, website_url):
+    website_domain = normalized_domain(urlparse(website_url).netloc)
+    for email in candidates:
+        email = email.strip().lower()
+        if not is_valid_public_email(email):
+            continue
+        email_domain = normalized_domain(email.split("@")[-1])
+        if website_domain and email_domain and not domains_match(email_domain, website_domain):
+            continue
+        if email not in emails:
+            emails.append(email)
+
+
+def normalized_domain(domain):
+    value = str(domain or "").lower().strip()
+    if value.startswith("www."):
+        value = value[4:]
+    return value
+
+
+def domains_match(email_domain, website_domain):
+    return email_domain == website_domain or email_domain.endswith("." + website_domain)
 
 
 def normalize_website_url(url):

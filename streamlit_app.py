@@ -117,7 +117,7 @@ def render_places_api(config):
         busqueda = st.text_input("Busqueda", value=config["busqueda_maps"])
         ciudad = st.text_input("Ciudad", placeholder="Opcional")
         pais = st.text_input("Pais", placeholder="España")
-        max_results = st.number_input("Maximo de resultados", min_value=1, max_value=60, value=10)
+        max_results = st.number_input("Maximo de resultados", min_value=1, max_value=200, value=20)
         send_to_sheets = st.checkbox("Enviar a Google Sheets", value=True)
         enrich_emails = st.checkbox("Buscar emails públicos en la web", value=True)
         submitted = st.form_submit_button("Buscar con API")

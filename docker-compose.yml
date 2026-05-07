@@ -10,4 +10,5 @@ services:
     volumes:
       - ./data:/data
     environment:
+      DATA_DIR: /data
       DATABASE_PATH: /data/users.db

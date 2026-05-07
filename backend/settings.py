@@ -6,6 +6,7 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parent.parent
 CONFIG_FILE = BASE_DIR / "app_config.json"
 LOG_DIR = BASE_DIR / "logs"
+DATA_DIR = Path(os.getenv("AGENTE_DATA_DIR", os.getenv("DATA_DIR", BASE_DIR))).resolve()
 
 DEFAULT_CONFIG = {
     "openai_api_key": "",

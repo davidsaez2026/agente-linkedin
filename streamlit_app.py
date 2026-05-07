@@ -132,7 +132,10 @@ def render_places_api(config):
             with st.spinner("Consultando Google Places..."):
                 if send_to_sheets:
                     result = search_and_send_places(config, busqueda, ciudad, pais, int(max_results))
-                    st.success(f"{result['sent']} de {len(result['places'])} resultados enviados a Sheets.")
+                    st.success(
+                        f"{result['sent']} nuevos enviados a Sheets. "
+                        f"{result['skipped']} duplicados ignorados de {len(result['places'])} resultados."
+                    )
                     if result["errors"]:
                         st.warning(result["errors"][0])
                     places = result["places"]

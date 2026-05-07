@@ -9,6 +9,7 @@ users.db-*
 data/
 .streamlit/secrets.toml
 logs/
+visitados_places_api.txt
 
 .DS_Store
 ._*

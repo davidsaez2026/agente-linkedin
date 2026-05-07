@@ -2,6 +2,7 @@ import time
 
 import requests
 
+from .memory import append_seen_id, load_seen_ids
 from .sheets import send_lead
 
 
@@ -91,16 +92,23 @@ def place_to_lead(place, ciudad, pais, etiqueta):
     }
 
 
+PLACES_MEMORY_FILE = "visitados_places_api.txt"
+
+
 def search_and_send_places(config, busqueda, ciudad, pais, max_results):
     query = f"{busqueda} en {ciudad}, {pais}".strip()
     places = search_places(config.get("google_places_api_key", ""), query, max_results=max_results)
+    seen_ids = load_seen_ids(PLACES_MEMORY_FILE)
+    new_places = [place for place in places if place.get("place_id") and place["place_id"] not in seen_ids]
     sent = 0
     errors = []
-    for place in places:
+    skipped = len(places) - len(new_places)
+    for place in new_places:
         lead = place_to_lead(place, ciudad, pais, f"Places API: {busqueda}")
         ok, message = send_lead(config.get("webhook_url", ""), lead)
         if ok:
             sent += 1
+            append_seen_id(PLACES_MEMORY_FILE, place.get("place_id"))
         else:
             errors.append(message)
-    return {"query": query, "places": places, "sent": sent, "errors": errors}
+    return {"query": query, "places": places, "new_places": new_places, "sent": sent, "skipped": skipped, "errors": errors}

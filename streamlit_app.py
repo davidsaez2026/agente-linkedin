@@ -5,6 +5,8 @@ import pandas as pd
 import streamlit as st
 
 from backend.auth import authenticate, create_user, ensure_admin_user, public_users, set_user_active
+from backend.club_batch import parse_club_csv, parse_club_text, run_club_batch
+from backend.club_sources import SPAIN_SOURCES_2025_26, fetch_spain_clubs_2025_26
 from backend.email_tools import generate_email_permutations
 from backend.jobs import AGENTS, JobManager, is_cloud_runtime
 from backend.lead_import import LEAD_FIELDS, send_imported_leads
@@ -193,6 +195,80 @@ def render_import(config):
             st.warning(result["errors"][0])
 
 
+def render_club_batch(config):
+    st.subheader("Búsqueda por clubes")
+    st.caption(
+        "Ejecuta búsquedas por lote a partir de un listado de clubes por país/categoría. "
+        "Ideal para LALIGA, RFEF u otras competiciones si aportas el listado objetivo."
+    )
+
+    default_country = st.text_input("País por defecto", value="España")
+    st.markdown("**Catálogo automático**")
+    source_country = st.selectbox("País del catálogo", ["España"], index=0)
+    categories = st.multiselect(
+        "Categorías",
+        list(SPAIN_SOURCES_2025_26.keys()),
+        default=["LALIGA EA SPORTS", "LALIGA HYPERMOTION"],
+    )
+    use_auto_catalog = st.button("Cargar catálogo automático", use_container_width=True)
+
+    if use_auto_catalog:
+        try:
+            with st.spinner("Cargando clubes desde fuentes públicas..."):
+                if source_country == "España":
+                    st.session_state.club_catalog_targets = fetch_spain_clubs_2025_26(categories)
+            st.success(f"{len(st.session_state.club_catalog_targets)} clubes cargados.")
+        except Exception as exc:
+            st.error(f"No se pudo cargar el catálogo: {exc}")
+
+    max_results_per_club = st.number_input("Resultados por club", min_value=1, max_value=5, value=1)
+    limit = st.number_input("Máximo de clubes a procesar en esta ejecución", min_value=1, max_value=500, value=25)
+    enrich_emails = st.checkbox("Buscar emails públicos en la web", value=True, key="club_batch_emails")
+
+    st.markdown("**Opción rápida: pegar clubes, uno por línea**")
+    clubs_text = st.text_area(
+        "Clubes",
+        placeholder="Real Madrid\nFC Barcelona\nValencia CF",
+        height=160,
+    )
+
+    st.markdown("**Opción avanzada: subir CSV**")
+    st.caption("Columnas admitidas: club,categoria,pais,ciudad,busqueda")
+    uploaded = st.file_uploader("CSV de clubes", type=["csv"], key="club_csv")
+
+    targets = st.session_state.get("club_catalog_targets", [])
+    if uploaded:
+        targets = parse_club_csv(uploaded.getvalue(), default_country)
+    elif clubs_text.strip():
+        targets = parse_club_text(clubs_text, default_country)
+
+    if targets:
+        st.write(f"{len(targets)} clubes cargados.")
+        st.dataframe(pd.DataFrame(targets).head(100), use_container_width=True)
+
+    if st.button("Buscar clubes y enviar nuevos leads", use_container_width=True):
+        if not targets:
+            st.warning("Pega clubes o sube un CSV.")
+            return
+        if not config.get("google_places_api_key"):
+            st.error("Falta Google Places API key.")
+            return
+        if not config.get("webhook_url"):
+            st.error("Falta WEBHOOK_URL.")
+            return
+
+        with st.spinner("Procesando clubes..."):
+            result = run_club_batch(
+                config,
+                targets,
+                max_results_per_club=int(max_results_per_club),
+                enrich_emails=enrich_emails,
+                limit=int(limit),
+            )
+        st.success(f"{result['sent']} nuevos enviados. {result['skipped']} duplicados ignorados.")
+        st.dataframe(pd.DataFrame(result["results"]), use_container_width=True)
+
+
 def render_users():
     st.subheader("Usuarios")
     if st.session_state.get("role") != "admin":
@@ -312,7 +388,7 @@ def main():
     for col, (label, value) in zip(cols, stats):
         col.metric(label, value)
 
-    tab_names = ["Maps API", "Importar", "Configuracion", "Herramientas", "Usuarios"]
+    tab_names = ["Maps API", "Clubes", "Importar", "Configuracion", "Herramientas", "Usuarios"]
     if config.get("show_legacy_agents"):
         tab_names.insert(0, "Agentes legacy")
 
@@ -325,6 +401,9 @@ def main():
 
     with tabs[tab_index]:
         render_places_api(config)
+    tab_index += 1
+    with tabs[tab_index]:
+        render_club_batch(config)
     tab_index += 1
     with tabs[tab_index]:
         render_import(config)

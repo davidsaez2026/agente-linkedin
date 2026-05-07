@@ -49,6 +49,7 @@ http://127.0.0.1:8787
 - Enriquecimiento opcional de emails publicos desde la web de cada entidad.
 - Limite de Places API ampliado hasta 200 resultados por busqueda, sujeto a disponibilidad de la API.
 - Busqueda por ciudad y pais, o solo por pais si quieres un barrido mas amplio.
+- Busqueda por lote de clubes desde lista pegada o CSV (`club,categoria,pais,ciudad,busqueda`).
 - Botones para iniciar/detener agentes y consultar logs.
 - Acceso controlado por usuario y contrasena en la version Streamlit.
 - Gestion de usuarios desde la pestaña `Usuarios` para administradores.

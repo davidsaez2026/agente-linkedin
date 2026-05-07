@@ -115,7 +115,7 @@ CONTACT_PATHS = [
 CONTACT_LINK_KEYWORDS = ["contact", "contacto", "legal", "privacidad", "privacy", "about", "club"]
 
 
-def search_and_send_places(config, busqueda, ciudad, pais, max_results, enrich_emails=False):
+def search_and_send_places(config, busqueda, ciudad, pais, max_results, enrich_emails=False, tag=None):
     query = build_places_query(busqueda, ciudad, pais)
     places = search_places(config.get("google_places_api_key", ""), query, max_results=max_results)
     seen_ids = load_seen_ids(PLACES_MEMORY_FILE)
@@ -126,7 +126,7 @@ def search_and_send_places(config, busqueda, ciudad, pais, max_results, enrich_e
     for place in new_places:
         if enrich_emails:
             enrich_place_email(place)
-        lead = place_to_lead(place, ciudad, pais, f"Places API: {busqueda}")
+        lead = place_to_lead(place, ciudad, pais, tag or f"Places API: {busqueda}")
         ok, message = send_lead(config.get("webhook_url", ""), lead)
         if ok:
             sent += 1

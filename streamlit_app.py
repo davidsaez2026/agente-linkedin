@@ -8,6 +8,7 @@ from backend.auth import authenticate, create_user, ensure_admin_user, public_us
 from backend.club_batch import parse_club_csv, parse_club_text, run_club_batch
 from backend.club_sources import SPAIN_SOURCES_2025_26, fetch_spain_clubs_2025_26
 from backend.email_tools import generate_email_permutations
+from backend.email_verifier import send_verified_emails_to_sheets, verify_email_candidates
 from backend.jobs import AGENTS, JobManager, is_cloud_runtime
 from backend.lead_import import LEAD_FIELDS, send_imported_leads
 from backend.linkedin_tools import (
@@ -101,7 +102,7 @@ def render_config(config):
         st.success("Configuracion guardada.")
 
 
-def render_radar():
+def render_radar(config):
     st.subheader("Radar de emails")
     st.caption("Puedes generar candidatos personales con nombre/apellido o direcciones generales usando solo dominio.")
     with st.form("radar_form"):
@@ -113,9 +114,32 @@ def render_radar():
     if submitted:
         emails = generate_email_permutations(nombre, apellido, dominio)
         if emails:
+            st.session_state.radar_emails = emails
             st.code("\n".join(emails), language="text")
         else:
             st.warning("Introduce al menos un dominio.")
+
+    emails = st.session_state.get("radar_emails", [])
+    if emails:
+        left, right = st.columns(2)
+        if left.button("Comprobar formato y MX", use_container_width=True):
+            st.session_state.radar_verification = verify_email_candidates(emails)
+        if right.button("Guardar comprobados en Sheets", use_container_width=True):
+            if not config.get("webhook_url"):
+                st.error("Falta WEBHOOK_URL.")
+            else:
+                results = st.session_state.get("radar_verification") or verify_email_candidates(emails)
+                result = send_verified_emails_to_sheets(config["webhook_url"], results)
+                st.success(f"{result['sent']} emails con dominio MX guardados en Sheets.")
+                if result["errors"]:
+                    st.warning(result["errors"][0])
+
+    if st.session_state.get("radar_verification"):
+        st.dataframe(pd.DataFrame(st.session_state.radar_verification), use_container_width=True)
+        st.caption(
+            "La comprobación valida formato y registros MX del dominio. "
+            "No confirma que el buzón exacto exista."
+        )
 
 
 def render_places_api(config):
@@ -517,7 +541,7 @@ def main():
         render_config(config)
     tab_index += 1
     with tabs[tab_index]:
-        render_radar()
+        render_radar(config)
     tab_index += 1
     with tabs[tab_index]:
         render_users()

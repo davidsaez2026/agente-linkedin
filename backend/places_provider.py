@@ -100,7 +100,7 @@ CONTACT_PATHS = ["", "/contacto", "/contact", "/club/contacto", "/contact-us"]
 
 
 def search_and_send_places(config, busqueda, ciudad, pais, max_results, enrich_emails=False):
-    query = f"{busqueda} en {ciudad}, {pais}".strip()
+    query = build_places_query(busqueda, ciudad, pais)
     places = search_places(config.get("google_places_api_key", ""), query, max_results=max_results)
     seen_ids = load_seen_ids(PLACES_MEMORY_FILE)
     new_places = [place for place in places if place.get("place_id") and place["place_id"] not in seen_ids]
@@ -118,6 +118,14 @@ def search_and_send_places(config, busqueda, ciudad, pais, max_results, enrich_e
         else:
             errors.append(message)
     return {"query": query, "places": places, "new_places": new_places, "sent": sent, "skipped": skipped, "errors": errors}
+
+
+def build_places_query(busqueda, ciudad="", pais=""):
+    parts = [str(busqueda or "").strip()]
+    location = ", ".join(part for part in [str(ciudad or "").strip(), str(pais or "").strip()] if part)
+    if location:
+        parts.append(f"en {location}")
+    return " ".join(part for part in parts if part)
 
 
 def enrich_places_with_emails(places):

@@ -9,7 +9,7 @@ from backend.email_tools import generate_email_permutations
 from backend.jobs import AGENTS, JobManager, is_cloud_runtime
 from backend.lead_import import LEAD_FIELDS, send_imported_leads
 from backend.memory import memory_stats
-from backend.places_provider import enrich_places_with_emails, search_and_send_places
+from backend.places_provider import build_places_query, enrich_places_with_emails, search_and_send_places
 from backend.settings import load_config, save_config
 
 
@@ -115,7 +115,7 @@ def render_places_api(config):
     st.caption("Usa Google Places Text Search API y envia resultados al webhook de Sheets.")
     with st.form("places_api_form"):
         busqueda = st.text_input("Busqueda", value=config["busqueda_maps"])
-        ciudad = st.text_input("Ciudad", placeholder="Madrid")
+        ciudad = st.text_input("Ciudad", placeholder="Opcional")
         pais = st.text_input("Pais", placeholder="España")
         max_results = st.number_input("Maximo de resultados", min_value=1, max_value=60, value=10)
         send_to_sheets = st.checkbox("Enviar a Google Sheets", value=True)
@@ -123,8 +123,8 @@ def render_places_api(config):
         submitted = st.form_submit_button("Buscar con API")
 
     if submitted:
-        if not ciudad or not pais:
-            st.warning("Introduce ciudad y pais.")
+        if not pais:
+            st.warning("Introduce al menos un pais.")
             return
         if not config.get("google_places_api_key"):
             st.error("Falta Google Places API key en Configuracion o Secrets.")
@@ -150,7 +150,7 @@ def render_places_api(config):
                 else:
                     from backend.places_provider import search_places
 
-                    query = f"{busqueda} en {ciudad}, {pais}"
+                    query = build_places_query(busqueda, ciudad, pais)
                     places = search_places(config.get("google_places_api_key", ""), query, int(max_results))
                     if enrich_emails:
                         places = enrich_places_with_emails(places)

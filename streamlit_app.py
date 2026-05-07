@@ -290,11 +290,34 @@ def render_linkedin_targets():
         "te da URLs para trabajo manual, Sales Navigator o exportación autorizada."
     )
 
+    st.markdown("**Catálogo automático**")
+    source_country = st.selectbox("País del catálogo", ["España"], index=0, key="linkedin_catalog_country")
+    categories = st.multiselect(
+        "Categorías",
+        list(SPAIN_SOURCES_2025_26.keys()),
+        default=["LALIGA EA SPORTS", "LALIGA HYPERMOTION"],
+        key="linkedin_catalog_categories",
+    )
+    if st.button("Cargar catálogo automático", use_container_width=True, key="linkedin_load_catalog"):
+        try:
+            with st.spinner("Cargando clubes desde fuentes públicas..."):
+                if source_country == "España":
+                    st.session_state.linkedin_catalog_targets = fetch_spain_clubs_2025_26(categories)
+            st.success(f"{len(st.session_state.linkedin_catalog_targets)} clubes cargados.")
+        except Exception as exc:
+            st.error(f"No se pudo cargar el catálogo: {exc}")
+
     country = st.text_input("País/contexto", value="España", key="linkedin_country")
+    use_catalog = st.checkbox(
+        "Usar clubes del catálogo automático",
+        value=bool(st.session_state.get("linkedin_catalog_targets")),
+        key="linkedin_use_catalog",
+    )
     clubs_text = st.text_area(
         "Clubes, uno por línea",
         placeholder="Real Madrid\nFC Barcelona\nValencia CF",
         height=140,
+        disabled=use_catalog,
         key="linkedin_clubs",
     )
     roles_text = st.text_area(
@@ -306,10 +329,17 @@ def render_linkedin_targets():
     max_rows = st.number_input("Máximo de búsquedas a generar", min_value=1, max_value=1000, value=200)
 
     if st.button("Generar búsquedas LinkedIn", use_container_width=True):
-        clubs = [{"club": line.strip(), "categoria": ""} for line in clubs_text.splitlines() if line.strip()]
+        if use_catalog:
+            clubs = st.session_state.get("linkedin_catalog_targets", [])
+        else:
+            clubs = [{"club": line.strip(), "categoria": ""} for line in clubs_text.splitlines() if line.strip()]
         roles = [line.strip() for line in roles_text.splitlines() if line.strip()]
         searches = build_linkedin_searches(clubs, roles, country=country)[: int(max_rows)]
         st.session_state.linkedin_searches = searches
+
+    if st.session_state.get("linkedin_catalog_targets"):
+        st.write(f"{len(st.session_state.linkedin_catalog_targets)} clubes disponibles desde catálogo.")
+        st.dataframe(pd.DataFrame(st.session_state.linkedin_catalog_targets).head(100), use_container_width=True)
 
     searches = st.session_state.get("linkedin_searches", [])
     if searches:

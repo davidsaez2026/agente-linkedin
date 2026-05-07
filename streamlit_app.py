@@ -288,7 +288,7 @@ def render_club_batch(config):
         st.dataframe(pd.DataFrame(result["results"]), use_container_width=True)
 
 
-def render_linkedin_targets():
+def render_linkedin_targets(config):
     st.subheader("Perfiles LinkedIn objetivo")
     st.caption(
         "Genera búsquedas dirigidas por club y rol. No automatiza LinkedIn ni extrae perfiles; "
@@ -508,7 +508,7 @@ def main():
         render_club_batch(config)
     tab_index += 1
     with tabs[tab_index]:
-        render_linkedin_targets()
+        render_linkedin_targets(config)
     tab_index += 1
     with tabs[tab_index]:
         render_import(config)

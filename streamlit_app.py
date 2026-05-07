@@ -122,6 +122,11 @@ def render_places_api(config):
         max_results = st.number_input("Maximo de resultados", min_value=1, max_value=200, value=20)
         send_to_sheets = st.checkbox("Enviar a Google Sheets", value=True)
         enrich_emails = st.checkbox("Buscar emails públicos en la web", value=True)
+        include_email_candidates = st.checkbox(
+            "Si no hay email público, generar candidatos por dominio",
+            value=False,
+            help="Genera correos tipo info@dominio.com o contacto@dominio.com. No están verificados.",
+        )
         submitted = st.form_submit_button("Buscar con API")
 
     if submitted:
@@ -141,6 +146,7 @@ def render_places_api(config):
                         pais,
                         int(max_results),
                         enrich_emails=enrich_emails,
+                        include_email_candidates=include_email_candidates,
                     )
                     st.success(
                         f"{result['sent']} nuevos enviados a Sheets. "
@@ -155,7 +161,7 @@ def render_places_api(config):
                     query = build_places_query(busqueda, ciudad, pais)
                     places = search_places(config.get("google_places_api_key", ""), query, int(max_results))
                     if enrich_emails:
-                        places = enrich_places_with_emails(places)
+                        places = enrich_places_with_emails(places, include_candidates=include_email_candidates)
                     st.success(f"{len(places)} resultados encontrados.")
             st.dataframe(places, use_container_width=True)
         except Exception as exc:
@@ -224,6 +230,12 @@ def render_club_batch(config):
     max_results_per_club = st.number_input("Resultados por club", min_value=1, max_value=5, value=1)
     limit = st.number_input("Máximo de clubes a procesar en esta ejecución", min_value=1, max_value=500, value=25)
     enrich_emails = st.checkbox("Buscar emails públicos en la web", value=True, key="club_batch_emails")
+    include_email_candidates = st.checkbox(
+        "Si no hay email público, generar candidatos por dominio",
+        value=False,
+        key="club_batch_candidates",
+        help="Genera correos tipo info@dominio.com o contacto@dominio.com. No están verificados.",
+    )
 
     st.markdown("**Opción rápida: pegar clubes, uno por línea**")
     clubs_text = st.text_area(
@@ -264,6 +276,7 @@ def render_club_batch(config):
                 max_results_per_club=int(max_results_per_club),
                 enrich_emails=enrich_emails,
                 limit=int(limit),
+                include_email_candidates=include_email_candidates,
             )
         st.success(f"{result['sent']} nuevos enviados. {result['skipped']} duplicados ignorados.")
         st.dataframe(pd.DataFrame(result["results"]), use_container_width=True)

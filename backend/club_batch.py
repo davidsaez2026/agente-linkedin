@@ -43,7 +43,7 @@ def parse_club_csv(content, default_country):
     return targets
 
 
-def run_club_batch(config, targets, max_results_per_club=1, enrich_emails=True, limit=None):
+def run_club_batch(config, targets, max_results_per_club=1, enrich_emails=True, limit=None, include_email_candidates=False):
     results = []
     total_sent = 0
     total_skipped = 0
@@ -59,6 +59,7 @@ def run_club_batch(config, targets, max_results_per_club=1, enrich_emails=True, 
             int(max_results_per_club),
             enrich_emails=enrich_emails,
             tag=build_tag(target),
+            include_email_candidates=include_email_candidates,
         )
         total_sent += result.get("sent", 0)
         total_skipped += result.get("skipped", 0)

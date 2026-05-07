@@ -47,6 +47,8 @@ http://127.0.0.1:8787
 - Busqueda de entidades en Google Places API sin Selenium.
 - Busquedas incrementales en Places API: los `place_id` ya enviados se guardan para evitar duplicados.
 - Enriquecimiento opcional de emails publicos desde la web de cada entidad.
+- Deteccion ampliada de emails: mailto, texto ofuscado, Cloudflare Email Protection, sitemaps y paginas legales/contacto.
+- Opcion para generar candidatos por dominio cuando no hay email publico visible.
 - Limite de Places API ampliado hasta 200 resultados por busqueda, sujeto a disponibilidad de la API.
 - Busqueda por ciudad y pais, o solo por pais si quieres un barrido mas amplio.
 - Busqueda por lote de clubes desde lista pegada o CSV (`club,categoria,pais,ciudad,busqueda`).

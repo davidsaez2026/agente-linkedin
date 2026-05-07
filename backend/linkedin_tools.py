@@ -2,6 +2,8 @@ import csv
 from io import StringIO
 from urllib.parse import quote_plus
 
+from .sheets import send_lead
+
 
 DEFAULT_LINKEDIN_ROLES = [
     "director deportivo",
@@ -56,3 +58,34 @@ def searches_to_csv(searches):
     for row in searches:
         writer.writerow({field: row.get(field, "") for field in fieldnames})
     return output.getvalue()
+
+
+def linkedin_search_to_lead(search, country=""):
+    return {
+        "nombre": search.get("club", ""),
+        "apellidos": "LinkedIn search",
+        "empresa": search.get("club", ""),
+        "cargo": search.get("rol", ""),
+        "email": "",
+        "telefono": "",
+        "url_perfil": search.get("linkedin_people_url", ""),
+        "palabra_clave": f"LinkedIn: {search.get('rol', '')}",
+        "ciudad": "",
+        "pais": country,
+        "direccion": "",
+        "maps_url": search.get("google_linkedin_url", ""),
+        "rating": "",
+        "reviews": "",
+    }
+
+
+def send_linkedin_searches_to_sheets(webhook_url, searches, country=""):
+    sent = 0
+    errors = []
+    for search in searches:
+        ok, message = send_lead(webhook_url, linkedin_search_to_lead(search, country))
+        if ok:
+            sent += 1
+        else:
+            errors.append(message)
+    return {"sent": sent, "errors": errors}

@@ -10,7 +10,12 @@ from backend.club_sources import SPAIN_SOURCES_2025_26, fetch_spain_clubs_2025_2
 from backend.email_tools import generate_email_permutations
 from backend.jobs import AGENTS, JobManager, is_cloud_runtime
 from backend.lead_import import LEAD_FIELDS, send_imported_leads
-from backend.linkedin_tools import DEFAULT_LINKEDIN_ROLES, build_linkedin_searches, searches_to_csv
+from backend.linkedin_tools import (
+    DEFAULT_LINKEDIN_ROLES,
+    build_linkedin_searches,
+    searches_to_csv,
+    send_linkedin_searches_to_sheets,
+)
 from backend.memory import memory_stats
 from backend.places_provider import build_places_query, enrich_places_with_emails, search_and_send_places
 from backend.settings import load_config, save_config
@@ -345,6 +350,14 @@ def render_linkedin_targets():
     if searches:
         st.success(f"{len(searches)} búsquedas generadas.")
         st.dataframe(pd.DataFrame(searches), use_container_width=True)
+        if st.button("Guardar búsquedas LinkedIn en Google Sheets", use_container_width=True):
+            if not config.get("webhook_url"):
+                st.error("Falta WEBHOOK_URL.")
+            else:
+                result = send_linkedin_searches_to_sheets(config["webhook_url"], searches, country=country)
+                st.success(f"{result['sent']} búsquedas guardadas en Sheets.")
+                if result["errors"]:
+                    st.warning(result["errors"][0])
         st.download_button(
             "Descargar CSV de búsquedas",
             data=searches_to_csv(searches),
